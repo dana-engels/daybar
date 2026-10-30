@@ -53,8 +53,4 @@ Changes save automatically in local UserDefaults. The repository includes a gene
 swift test
 ```
 
-- `Schedule.swift`: activity model and schedule calculations.
-- `App.swift`: local persistence, scheduling, login registration, and app lifecycle.
-- `Views.swift`: timeline, inline editor, settings, and reminder animation.
-- `Appearance.swift`: color presets and custom accent persistence.
-- `ScheduleTests.swift`: time boundaries, weekdays, missed transitions, and clock changes.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the component boundaries, scheduling rules, persistence compatibility, and test coverage.

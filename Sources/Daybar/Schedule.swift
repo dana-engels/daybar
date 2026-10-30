@@ -6,6 +6,28 @@ struct Block: Identifiable, Codable, Equatable {
     var minute: Int
     var symbol: String
     var weekdays: [Int] = Array(1...7)
+
+    init(id: UUID = UUID(), title: String, minute: Int, symbol: String, weekdays: [Int] = Array(1...7)) {
+        self.id = id
+        self.title = title
+        self.minute = minute
+        self.symbol = symbol
+        self.weekdays = weekdays
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        minute = try values.decode(Int.self, forKey: .minute)
+        symbol = try values.decode(String.self, forKey: .symbol)
+        weekdays = try values.decode([Int].self, forKey: .weekdays)
+        guard (0..<1440).contains(minute), weekdays.allSatisfy({ (1...7).contains($0) }) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid activity time or weekday."))
+        }
+        weekdays = Array(Set(weekdays)).sorted()
+    }
+
     static let defaults: [Block] = [
         Block(title: "Breakfast + Plan Day", minute: 375, symbol: "sun.max.fill"),
         Block(title: "Morning routine", minute: 420, symbol: "heart.fill"),
@@ -19,22 +41,77 @@ struct Block: Identifiable, Codable, Equatable {
 }
 
 enum Schedule {
-    static func transition(_ blocks: [Block], after previous: Date, through date: Date, calendar: Calendar = .current) -> Block? {
-        guard date > previous else { return nil }
-        return today(blocks, at: date, calendar: calendar).last { block in
-            guard let due = calendar.date(bySettingHour: block.minute / 60, minute: block.minute % 60, second: 0, of: date) else { return false }
-            return due > previous && due <= date
+    struct Timeline: Equatable {
+        var current: Block?
+        var next: Block?
+    }
+
+    struct Occurrence {
+        let block: Block
+        let date: Date
+        var identity: Identity { Identity(blockID: block.id, date: date) }
+        struct Identity: Hashable {
+            let blockID: UUID
+            let date: Date
         }
     }
+
+    static func ordered(_ blocks: [Block]) -> [Block] {
+        blocks.sorted { $0.minute == $1.minute ? $0.id.uuidString < $1.id.uuidString : $0.minute < $1.minute }
+    }
+
     static func today(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> [Block] {
-        blocks.filter { $0.weekdays.contains(calendar.component(.weekday, from: date)) }
-            .sorted { $0.minute == $1.minute ? $0.id.uuidString < $1.id.uuidString : $0.minute < $1.minute }
+        ordered(blocks.filter { $0.weekdays.contains(calendar.component(.weekday, from: date)) })
     }
+
+    static func occurrences(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> [Occurrence] {
+        today(blocks, at: date, calendar: calendar).compactMap { block in
+            guard (0..<1440).contains(block.minute),
+                  let due = calendar.date(bySettingHour: block.minute / 60, minute: block.minute % 60, second: 0,
+                                          of: calendar.startOfDay(for: date), matchingPolicy: .nextTime, repeatedTimePolicy: .first),
+                  calendar.isDate(due, inSameDayAs: date) else { return nil }
+            return Occurrence(block: block, date: due)
+        }
+    }
+
+    static func timeline(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> Timeline {
+        let events = occurrences(blocks, at: date, calendar: calendar)
+        return Timeline(current: events.last { $0.date <= date }?.block, next: events.first { $0.date > date }?.block)
+    }
+
     static func current(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> Block? {
-        let minute = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
-        return today(blocks, at: date, calendar: calendar).last { $0.minute <= minute }
+        timeline(blocks, at: date, calendar: calendar).current
     }
+
+    static func transition(_ blocks: [Block], after previous: Date, through date: Date, calendar: Calendar = .current) -> Block? {
+        latestTransition(blocks, after: previous, through: date, calendar: calendar)?.block
+    }
+
+    static func latestTransition(_ blocks: [Block], after previous: Date, through date: Date, calendar: Calendar = .current) -> Occurrence? {
+        guard date > previous else { return nil }
+        return occurrences(blocks, at: date, calendar: calendar).last { $0.date > previous && $0.date <= date }
+    }
+
     static func time(_ minute: Int) -> String {
         String(format: "%d:%02d %@", (minute / 60 + 11) % 12 + 1, minute % 60, minute < 720 ? "AM" : "PM")
+    }
+}
+
+/// Tracks transitions independently of UI, timers, and notification presentation.
+struct ReminderScheduler {
+    private var previous: Date
+    private var emitted: Set<Schedule.Occurrence.Identity> = []
+
+    init(at date: Date) { previous = date }
+
+    mutating func rebase(at date: Date) { previous = date }
+
+    mutating func poll(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> Block? {
+        defer { previous = date }
+        // Keep a small replay guard across clock changes, midnight, and wake events.
+        emitted = emitted.filter { date.timeIntervalSince($0.date) < 172_800 }
+        guard let event = Schedule.latestTransition(blocks, after: previous, through: date, calendar: calendar),
+              emitted.insert(event.identity).inserted else { return nil }
+        return event.block
     }
 }

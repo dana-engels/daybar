@@ -36,4 +36,37 @@ final class ScheduleTests: XCTestCase {
     func testBackwardsClockDoesNotTriggerReminder() {
         XCTAssertNil(Schedule.transition(Block.defaults, after: date(12), through: date(7), calendar: calendar))
     }
+    func testClockRollbackDoesNotRepeatAnEmittedReminder() {
+        var scheduler = ReminderScheduler(at: date(6, 59))
+        XCTAssertNotNil(scheduler.poll(Block.defaults, at: date(7), calendar: calendar))
+        XCTAssertNil(scheduler.poll(Block.defaults, at: date(6, 59), calendar: calendar))
+        XCTAssertNil(scheduler.poll(Block.defaults, at: date(7), calendar: calendar))
+    }
+    func testSpringForwardUsesSameOccurrenceForTimelineAndReminder() {
+        var local = calendar
+        local.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let before = ISO8601DateFormatter().date(from: "2026-03-08T09:59:00Z")!
+        let after = ISO8601DateFormatter().date(from: "2026-03-08T10:00:00Z")!
+        let block = Block(title: "Skipped hour", minute: 150, symbol: "star")
+        XCTAssertNil(Schedule.current([block], at: before, calendar: local))
+        XCTAssertEqual(Schedule.transition([block], after: before, through: after, calendar: local)?.id, block.id)
+        XCTAssertEqual(Schedule.current([block], at: after, calendar: local)?.id, block.id)
+    }
+    func testFallBackDoesNotMakeCurrentActivityMoveBackwards() {
+        var local = calendar
+        local.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let repeatedHour = ISO8601DateFormatter().date(from: "2026-11-01T09:10:00Z")!
+        let first = Block(title: "Earlier", minute: 0, symbol: "star")
+        let second = Block(title: "Current", minute: 90, symbol: "star")
+        let third = Block(title: "Next", minute: 120, symbol: "star")
+        let timeline = Schedule.timeline([first, second, third], at: repeatedHour, calendar: local)
+        XCTAssertEqual(timeline.current?.id, second.id)
+        XCTAssertEqual(timeline.next?.id, third.id)
+    }
+    func testMidnightDoesNotCarryPreviousDaysActivity() {
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: date(0))!
+        XCTAssertNil(Schedule.current(Block.defaults, at: nextDay, calendar: calendar))
+        XCTAssertNil(Schedule.transition(Block.defaults, after: date(16), through: nextDay, calendar: calendar))
+    }
+
 }

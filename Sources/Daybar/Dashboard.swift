@@ -1,25 +1,12 @@
 import SwiftUI
 import AppKit
 
-extension View {
-    @ViewBuilder func daybarGlass(radius: CGFloat) -> some View {
-        if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius))
-        } else {
-            self.background(.regularMaterial, in: RoundedRectangle(cornerRadius: radius))
-                .overlay(RoundedRectangle(cornerRadius: radius).stroke(.white.opacity(0.16), lineWidth: 0.5))
-        }
-    }
-}
-
 struct Dashboard: View {
     @ObservedObject var store: Store
     @State private var editing: UUID?
     @State private var settings = false
-    private var current: Block? { Schedule.current(store.blocks, at: store.now) }
-    private var upcoming: Block? {
-        Schedule.today(store.blocks, at: store.now).first { $0.minute > Calendar.current.component(.hour, from: store.now) * 60 + Calendar.current.component(.minute, from: store.now) }
-    }
+    private var current: Block? { store.timeline.current }
+    private var upcoming: Block? { store.timeline.next }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -67,13 +54,13 @@ struct Dashboard: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 2) {
-                            ForEach(store.blocks.sorted { $0.minute < $1.minute }) { block in
+                            ForEach(Schedule.ordered(store.blocks)) { block in
                                 VStack(spacing: 0) {
                                     Button {
                                         withAnimation(.easeInOut(duration: 0.2)) { editing = editing == block.id ? nil : block.id }
                                     } label: { routineRow(block) }.buttonStyle(.plain)
-                                    if editing == block.id, let index = store.blocks.firstIndex(where: { $0.id == block.id }) {
-                                        BlockEditor(block: $store.blocks[index], accent: store.appearance.accent, preview: { store.showReminder?(block) }, delete: {
+                                    if editing == block.id {
+                                        BlockEditor(block: binding(for: block), accent: store.appearance.accent, preview: { store.showReminder?(block) }, delete: {
                                             editing = nil
                                             store.blocks.removeAll { $0.id == block.id }
                                         }).padding(.horizontal, 16).padding(.bottom, 12)
@@ -87,12 +74,18 @@ struct Dashboard: View {
                 }
                 HStack {
                     Image(systemName: "checkmark.circle").foregroundStyle(.tertiary)
-                    Text("Saved automatically").foregroundStyle(.tertiary)
+                    Text(store.storageMessage == nil ? "Saved automatically" : "Check saved settings").foregroundStyle(.tertiary)
                     Spacer()
                     if store.quiet { Image(systemName: "bell.slash").foregroundStyle(.secondary) }
                 }.font(.system(size: 10)).padding(.horizontal, 24).padding(.vertical, 12)
             }
-        }.frame(width: 390, height: 530).tint(store.appearance.accent).background(.ultraThinMaterial)
+        }.frame(width: DaybarLayout.dashboard.width, height: DaybarLayout.dashboard.height).tint(store.appearance.accent).background(.ultraThinMaterial)
+    }
+    private func binding(for block: Block) -> Binding<Block> {
+        Binding(get: { store.blocks.first { $0.id == block.id } ?? block }, set: { updated in
+            guard let index = store.blocks.firstIndex(where: { $0.id == block.id }) else { return }
+            store.blocks[index] = updated
+        })
     }
     private func routineRow(_ block: Block) -> some View {
         let active = block.id == current?.id
@@ -121,6 +114,7 @@ struct Dashboard: View {
                 Toggle("Quiet mode", isOn: $store.quiet)
                 Toggle("Animate transitions", isOn: $store.animated)
             }.toggleStyle(.switch).controlSize(.small)
+            if let message = store.storageMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             if let message = store.loginMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             accentOptions
             Text("A quiet nudge when your day changes. Reminders disappear automatically after six seconds.").font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -162,77 +156,3 @@ struct Dashboard: View {
     }
 }
 
-struct BlockEditor: View {
-    @Binding var block: Block
-    let accent: Color
-    let preview: () -> Void
-    let delete: () -> Void
-    private let icons = ["sun.max.fill", "pills.fill", "book.fill", "figure.walk", "cup.and.saucer.fill", "hammer.fill", "moon.fill", "sparkles", "heart.fill", "laptopcomputer", "leaf.fill", "fork.knife"]
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TextField("Activity name", text: $block.title).textFieldStyle(.plain).font(.system(size: 15, weight: .medium))
-            DatePicker("Time", selection: Binding(get: {
-                Calendar.current.date(bySettingHour: block.minute / 60, minute: block.minute % 60, second: 0, of: Date())!
-            }, set: { block.minute = Calendar.current.component(.hour, from: $0) * 60 + Calendar.current.component(.minute, from: $0) }), displayedComponents: .hourAndMinute).datePickerStyle(.field).controlSize(.small)
-            HStack(spacing: 5) {
-                ForEach(1...7, id: \.self) { day in
-                    let selected = block.weekdays.contains(day)
-                    Button {
-                        if selected { block.weekdays.removeAll { $0 == day } }
-                        else { block.weekdays.append(day) }
-                    } label: {
-                        Text(String(Calendar.current.shortWeekdaySymbols[day - 1].prefix(1)))
-                            .font(.system(size: 11, weight: .medium)).frame(width: 30, height: 28)
-                            .foregroundStyle(selected ? Color.white : Color.secondary)
-                            .background(selected ? accent : Color.primary.opacity(0.04), in: Capsule())
-                    }.buttonStyle(.plain).help(Calendar.current.weekdaySymbols[day - 1]).accessibilityLabel(Calendar.current.weekdaySymbols[day - 1]).accessibilityAddTraits(selected ? .isSelected : [])
-                }
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
-                ForEach(icons, id: \.self) { icon in
-                    Button { block.symbol = icon } label: {
-                        Image(systemName: icon).font(.system(size: 16)).frame(maxWidth: .infinity).frame(height: 30)
-                            .foregroundStyle(block.symbol == icon ? accent : Color.secondary)
-                            .background(block.symbol == icon ? accent.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                    }.buttonStyle(.plain).accessibilityLabel(icon)
-                }
-            }
-            HStack {
-                Button("Preview", systemImage: "play") { preview() }
-                Spacer()
-                Button("Delete activity", role: .destructive, action: delete)
-            }.font(.caption).buttonStyle(.plain).foregroundStyle(.secondary)
-        }.padding(16).background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-struct ReminderCard: View {
-    let block: Block
-    let animated: Bool
-    let accent: Color
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(accent.opacity(0.12)).frame(width: 46, height: 46)
-                Circle().stroke(accent.opacity(appeared ? 0 : 0.3), lineWidth: 1)
-                    .frame(width: 46, height: 46).scaleEffect(appeared && animated && !reduceMotion ? 1.7 : 1)
-                    .animation(animated && !reduceMotion ? .easeOut(duration: 1.4) : nil, value: appeared)
-                Image(systemName: block.symbol).font(.system(size: 23, weight: .light)).foregroundStyle(accent).symbolRenderingMode(.hierarchical)
-            }
-            VStack(alignment: .leading, spacing: 7) {
-                Text("NOW").font(.system(size: 9, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
-                Text(block.title).font(.system(size: 19, weight: .medium, design: .rounded)).lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }.padding(.horizontal, 22).padding(.vertical, 16).frame(width: 346, height: 98).daybarGlass(radius: 24)
-            .opacity(appeared ? 1 : 0)
-            .scaleEffect(appeared || !animated || reduceMotion ? 1 : 0.86, anchor: .top)
-            .offset(y: appeared || !animated || reduceMotion ? 0 : -22)
-            .animation(animated && !reduceMotion ? .spring(response: 0.65, dampingFraction: 0.86) : .easeOut(duration: 0.15), value: appeared)
-            .frame(width: 370, height: 142)
-            .onAppear { appeared = true }
-            .accessibilityElement(children: .combine)
-    }
-}

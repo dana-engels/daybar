@@ -9,9 +9,21 @@ struct RGBColor: Codable, Equatable {
     init(_ red: Double, _ green: Double, _ blue: Double) {
         self.red = red; self.green = green; self.blue = blue
     }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        red = try values.decode(Double.self, forKey: .red)
+        green = try values.decode(Double.self, forKey: .green)
+        blue = try values.decode(Double.self, forKey: .blue)
+        guard [red, green, blue].allSatisfy({ $0.isFinite && (0...1).contains($0) }) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid accent color."))
+        }
+    }
     init?(color: Color) {
         guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return nil }
-        self.init(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+        let components = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent]
+        guard components.allSatisfy(\.isFinite) else { return nil }
+        // Wide-gamut picker colors can fall outside sRGB; persist a valid sRGB accent.
+        self.init(min(1, max(0, rgb.redComponent)), min(1, max(0, rgb.greenComponent)), min(1, max(0, rgb.blueComponent)))
     }
 }
 
