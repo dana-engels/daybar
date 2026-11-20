@@ -28,6 +28,16 @@ struct Block: Identifiable, Codable, Equatable {
         weekdays = Array(Set(weekdays)).sorted()
     }
 
+    var displayTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled activity" : title
+    }
+
+    mutating func acceptTitle(_ draft: String) {
+        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            title = draft
+        }
+    }
+
     static let defaults: [Block] = [
         Block(title: "Breakfast + Plan Day", minute: 375, symbol: "sun.max.fill"),
         Block(title: "Morning routine", minute: 420, symbol: "heart.fill"),
@@ -65,13 +75,17 @@ enum Schedule {
     }
 
     static func occurrences(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> [Occurrence] {
-        today(blocks, at: date, calendar: calendar).compactMap { block in
+        var events: [Occurrence] = []
+        for block in today(blocks, at: date, calendar: calendar) {
             guard (0..<1440).contains(block.minute),
                   let due = calendar.date(bySettingHour: block.minute / 60, minute: block.minute % 60, second: 0,
                                           of: calendar.startOfDay(for: date), matchingPolicy: .nextTime, repeatedTimePolicy: .first),
-                  calendar.isDate(due, inSameDayAs: date) else { return nil }
-            return Occurrence(block: block, date: due)
+                  calendar.isDate(due, inSameDayAs: date) else { continue }
+            // Ordered by scheduled minute, then ID. The last activity at an instant wins.
+            if events.last?.date == due { events.removeLast() }
+            events.append(Occurrence(block: block, date: due))
         }
+        return events
     }
 
     static func timeline(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> Timeline {

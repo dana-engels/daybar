@@ -1,6 +1,6 @@
 # Daybar
 
-A quiet, customizable macOS menu bar companion for your daily routine. See what’s happening now, glance at what’s next, and get a brief glass reminder when it’s time to move on.
+I balance work, school, business, family, and my health. When I get deep into my work, I can lose track of time. I built Daybar with help from AI so I could glance at my Mac’s menu bar and see where I am in my schedule. I wanted to pick my own colors and icons and get a quick heads-up when it’s time to move on.
 
 ## Features
 

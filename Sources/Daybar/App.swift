@@ -39,7 +39,12 @@ final class Delegate: NSObject, NSApplicationDelegate {
         }
         // Subscribe to the value itself, rather than objectWillChange (which fires before mutation).
         observation = store.$timeline.map(\.current).removeDuplicates().sink { [weak self] block in
-            self?.status?.button?.title = "◷ " + (block?.title ?? "Daybar")
+            guard let button = self?.status?.button else { return }
+            button.image = block.flatMap { NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) }
+            button.imagePosition = .imageLeading
+            let title = block?.displayTitle ?? "Daybar"
+            button.title = button.image == nil ? "◷ " + title : title
+            button.setAccessibilityLabel(title)
         }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: .NSSystemTimeZoneDidChange, object: nil)

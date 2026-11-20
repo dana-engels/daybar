@@ -52,6 +52,31 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(Schedule.transition([block], after: before, through: after, calendar: local)?.id, block.id)
         XCTAssertEqual(Schedule.current([block], at: after, calendar: local)?.id, block.id)
     }
+    func testSpringCollisionPreviewsAndAnnouncesOnlyTheWinner() {
+        var local = calendar
+        local.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let before = ISO8601DateFormatter().date(from: "2026-03-08T09:59:00Z")!
+        let after = before.addingTimeInterval(60)
+        let activities = [135, 165, 180].map { Block(title: "Routine", minute: $0, symbol: "book") }
+        for group in [Array(activities.prefix(2)), activities] {
+            let winner = group.last?.id
+            var scheduler = ReminderScheduler(at: before)
+            XCTAssertEqual(Schedule.timeline(group.reversed(), at: before, calendar: local).next?.id, winner)
+            XCTAssertEqual(Schedule.current(group, at: after, calendar: local)?.id, winner)
+            XCTAssertEqual(scheduler.poll(group, at: after, calendar: local)?.id, winner)
+            XCTAssertNil(scheduler.poll(group, at: after.addingTimeInterval(60), calendar: local))
+        }
+    }
+
+    func testBlankEditsPreserveLastUsableTitleAndLegacyBlanksHaveFallback() {
+        var block = Block(title: "  ", minute: 120, symbol: "book")
+        XCTAssertEqual(block.displayTitle, "Untitled activity")
+        block.acceptTitle("Read")
+        block.acceptTitle("")
+        block.acceptTitle("  ")
+        XCTAssertEqual(block.title, "Read")
+    }
+
     func testFallBackDoesNotMakeCurrentActivityMoveBackwards() {
         var local = calendar
         local.timeZone = TimeZone(identifier: "America/Los_Angeles")!

@@ -4,6 +4,10 @@ import AppKit
 struct Dashboard: View {
     @ObservedObject var store: Store
     @State private var editing: UUID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var dashboardAnimation: Animation? {
+        store.animated && !reduceMotion ? .easeInOut(duration: 0.2) : nil
+    }
     @State private var settings = false
     private var current: Block? { store.timeline.current }
     private var upcoming: Block? { store.timeline.next }
@@ -15,7 +19,7 @@ struct Dashboard: View {
                     Text(store.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { withAnimation(.easeInOut(duration: 0.2)) { settings.toggle(); editing = nil } } label: {
+                Button { withAnimation(dashboardAnimation) { settings.toggle(); editing = nil } } label: {
                     Image(systemName: settings ? "xmark" : "slider.horizontal.3").frame(width: 30, height: 30).contentShape(Circle())
                 }.buttonStyle(.plain).help(settings ? "Back to today" : "Settings")
             }.padding(22)
@@ -30,13 +34,13 @@ struct Dashboard: View {
                             .background(store.appearance.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 15))
                         VStack(alignment: .leading, spacing: 5) {
                             Text(current == nil ? "YOUR DAY AWAITS" : "RIGHT NOW").font(.system(size: 9, weight: .semibold)).tracking(1.8).foregroundStyle(.secondary)
-                            Text(current?.title ?? "A little room to breathe").font(.system(size: 20, weight: .medium)).lineLimit(2)
+                            Text(current?.displayTitle ?? "A little room to breathe").font(.system(size: 20, weight: .medium)).lineLimit(2)
                         }
                     }
                     if let next = upcoming {
                         HStack(spacing: 5) {
                             Text("Up next").foregroundStyle(.tertiary)
-                            Text(next.title).lineLimit(1)
+                            Text(next.displayTitle).lineLimit(1)
                             Spacer(minLength: 0)
                             Text(Schedule.time(next.minute)).monospacedDigit()
                         }.font(.caption).foregroundStyle(.secondary)
@@ -57,7 +61,7 @@ struct Dashboard: View {
                             ForEach(Schedule.ordered(store.blocks)) { block in
                                 VStack(spacing: 0) {
                                     Button {
-                                        withAnimation(.easeInOut(duration: 0.2)) { editing = editing == block.id ? nil : block.id }
+                                        withAnimation(dashboardAnimation) { editing = editing == block.id ? nil : block.id }
                                     } label: { routineRow(block) }.buttonStyle(.plain)
                                     if editing == block.id {
                                         BlockEditor(block: binding(for: block), accent: store.appearance.accent, preview: { store.showReminder?(block) }, delete: {
@@ -69,7 +73,7 @@ struct Dashboard: View {
                             }
                         }.padding(.horizontal, 14).padding(.bottom, 12)
                     }.onChange(of: editing) { _, id in
-                        if let id { withAnimation { proxy.scrollTo(id, anchor: .top) } }
+                        if let id { withAnimation(dashboardAnimation) { proxy.scrollTo(id, anchor: .top) } }
                     }
                 }
                 HStack {
@@ -93,7 +97,7 @@ struct Dashboard: View {
             Text(Schedule.time(block.minute)).font(.system(size: 11, weight: active ? .semibold : .regular)).monospacedDigit().foregroundStyle(active ? .primary : .secondary).frame(width: 68, alignment: .trailing)
             Image(systemName: block.symbol).font(.system(size: 15, weight: .regular)).foregroundStyle(active ? store.appearance.accent : Color.secondary).frame(width: 28, height: 34)
             VStack(alignment: .leading, spacing: 3) {
-                Text(block.title).font(.system(size: 13, weight: active ? .semibold : .regular)).lineLimit(2)
+                Text(block.displayTitle).font(.system(size: 13, weight: active ? .semibold : .regular)).lineLimit(2)
                 if block.weekdays.count != 7 {
                     Text(block.weekdays.isEmpty ? "Not scheduled" : block.weekdays.sorted().map { Calendar.current.shortWeekdaySymbols[$0 - 1] }.joined(separator: " · ")).font(.system(size: 9)).foregroundStyle(.tertiary)
                 }

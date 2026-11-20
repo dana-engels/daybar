@@ -20,7 +20,7 @@ UserDefaults ↔ PreferencesRepository ↔ Store ↔ SwiftUI views
 
 `Schedule.swift` is independent of AppKit and SwiftUI. It uses an explicit calendar and date to derive concrete occurrences for a local calendar day. The timeline and reminder scheduler use those same occurrences, so daylight-saving changes cannot give them conflicting notions of the current activity.
 
-A nonexistent local time moves to the next valid local time. A repeated local time uses its first occurrence. Equal scheduled times use activity IDs as a deterministic tie-breaker. The latest activity wins; reminders do not stack.
+A nonexistent local time moves to the next valid local time. A repeated local time uses its first occurrence. Equal scheduled times use activity IDs as a deterministic tie-breaker. When several scheduled times resolve to one instant, the latest scheduled minute wins for the upcoming activity, current activity, and reminder; reminders do not stack.
 
 `ReminderScheduler` tracks the last check and recently emitted occurrence identities. It returns at most one reminder per check, skips yesterday's backlog, and suppresses replay when the clock moves backwards. The replay guard is in-memory; startup begins at the current time without replaying past events.
 

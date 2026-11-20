@@ -17,7 +17,7 @@ struct ReminderCard: View {
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text("NOW").font(.system(size: 9, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
-                Text(block.title).font(.system(size: 19, weight: .medium, design: .rounded)).lineLimit(2)
+                Text(block.displayTitle).font(.system(size: 19, weight: .medium, design: .rounded)).lineLimit(2)
             }
             Spacer(minLength: 0)
         }.padding(.horizontal, 22).padding(.vertical, 16).frame(width: DaybarLayout.reminderCard.width, height: DaybarLayout.reminderCard.height).daybarGlass(radius: 24)

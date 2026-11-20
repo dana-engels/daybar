@@ -5,13 +5,48 @@ struct BlockEditor: View {
     let accent: Color
     let preview: () -> Void
     let delete: () -> Void
-    private let icons = ["sun.max.fill", "pills.fill", "book.fill", "figure.walk", "cup.and.saucer.fill", "hammer.fill", "moon.fill", "sparkles", "heart.fill", "laptopcomputer", "leaf.fill", "fork.knife"]
+    private let icons = [
+        (symbol: "sun.max.fill", label: "Sun"),
+        (symbol: "pills.fill", label: "Pills"),
+        (symbol: "book.fill", label: "Book"),
+        (symbol: "figure.walk", label: "Walking"),
+        (symbol: "cup.and.saucer.fill", label: "Coffee"),
+        (symbol: "hammer.fill", label: "Hammer"),
+        (symbol: "moon.fill", label: "Moon"),
+        (symbol: "sparkles", label: "Sparkles"),
+        (symbol: "heart.fill", label: "Heart"),
+        (symbol: "laptopcomputer", label: "Laptop"),
+        (symbol: "leaf.fill", label: "Leaf"),
+        (symbol: "fork.knife", label: "Meal"),
+    ]
+    @State private var draftTitle: String?
+    @FocusState private var editingTitle: Bool
+    @State private var confirmingDeletion = false
+
+    // The picker edits a recurring wall time. A fixed UTC day has all 1,440 minutes.
+    private static let pickerZone = TimeZone.gmt
+    private var pickerTime: Binding<Date> {
+        Binding(get: { Date(timeIntervalSinceReferenceDate: Double(block.minute * 60)) }, set: { value in
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = Self.pickerZone
+            block.minute = calendar.component(.hour, from: value) * 60 + calendar.component(.minute, from: value)
+        })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            TextField("Activity name", text: $block.title).textFieldStyle(.plain).font(.system(size: 15, weight: .medium))
-            DatePicker("Time", selection: Binding(get: {
-                Calendar.current.date(bySettingHour: block.minute / 60, minute: block.minute % 60, second: 0, of: Date()) ?? Date()
-            }, set: { block.minute = Calendar.current.component(.hour, from: $0) * 60 + Calendar.current.component(.minute, from: $0) }), displayedComponents: .hourAndMinute).datePickerStyle(.field).controlSize(.small)
+            TextField("Activity name", text: Binding(get: { draftTitle ?? block.displayTitle }, set: { value in
+                draftTitle = value
+                block.acceptTitle(value)
+            }))
+                .focused($editingTitle)
+                .onChange(of: editingTitle) { _, focused in
+                    if !focused { draftTitle = nil }
+                }
+                .onSubmit { draftTitle = nil }.textFieldStyle(.plain).font(.system(size: 15, weight: .medium))
+            DatePicker("Time", selection: pickerTime, displayedComponents: .hourAndMinute)
+                .environment(\.timeZone, Self.pickerZone)
+                .datePickerStyle(.field).controlSize(.small)
             HStack(spacing: 5) {
                 ForEach(1...7, id: \.self) { day in
                     let selected = block.weekdays.contains(day)
@@ -27,18 +62,24 @@ struct BlockEditor: View {
                 }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
-                ForEach(icons, id: \.self) { icon in
-                    Button { block.symbol = icon } label: {
-                        Image(systemName: icon).font(.system(size: 16)).frame(maxWidth: .infinity).frame(height: 30)
-                            .foregroundStyle(block.symbol == icon ? accent : Color.secondary)
-                            .background(block.symbol == icon ? accent.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                    }.buttonStyle(.plain).accessibilityLabel(icon)
+                ForEach(icons, id: \.symbol) { icon in
+                    Button { block.symbol = icon.symbol } label: {
+                        Image(systemName: icon.symbol).font(.system(size: 16)).frame(maxWidth: .infinity).frame(height: 30)
+                            .foregroundStyle(block.symbol == icon.symbol ? accent : Color.secondary)
+                            .background(block.symbol == icon.symbol ? accent.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                    }.buttonStyle(.plain).accessibilityLabel(icon.label).accessibilityAddTraits(block.symbol == icon.symbol ? .isSelected : [])
                 }
             }
             HStack {
                 Button("Preview", systemImage: "play") { preview() }
                 Spacer()
-                Button("Delete activity", role: .destructive, action: delete)
+                Button("Delete activity", role: .destructive) { confirmingDeletion = true }
+                    .alert("Delete “\(block.displayTitle)”?", isPresented: $confirmingDeletion) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Delete", role: .destructive, action: delete)
+                    } message: {
+                        Text("This removes the activity from every day it is scheduled.")
+                    }
             }.font(.caption).buttonStyle(.plain).foregroundStyle(.secondary)
         }.padding(16).background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
     }
