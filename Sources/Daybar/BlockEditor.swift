@@ -24,12 +24,15 @@ struct BlockEditor: View {
     @FocusState private var editingTitle: Bool
     @State private var confirmingDeletion = false
 
-    // The picker edits a recurring wall time. A fixed UTC day has all 1,440 minutes.
-    private static let pickerZone = TimeZone.gmt
+    // A recurring time needs a complete local day, including on a clock-change Sunday.
     private var pickerTime: Binding<Date> {
-        Binding(get: { Date(timeIntervalSinceReferenceDate: Double(block.minute * 60)) }, set: { value in
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = Self.pickerZone
+        let calendar = Calendar.current
+        var day = calendar.startOfDay(for: Date(timeIntervalSinceReferenceDate: 0))
+        while let interval = calendar.dateInterval(of: .day, for: day), interval.duration != 86400 {
+            day = interval.end
+        }
+        let start = day
+        return Binding(get: { start.addingTimeInterval(Double(block.minute * 60)) }, set: { value in
             block.minute = calendar.component(.hour, from: value) * 60 + calendar.component(.minute, from: value)
         })
     }
@@ -53,7 +56,6 @@ struct BlockEditor: View {
                 .onSubmit { finishTitleEdit() }
                 .textFieldStyle(.plain).font(.system(size: 15, weight: .medium))
             DatePicker("Time", selection: pickerTime, displayedComponents: .hourAndMinute)
-                .environment(\.timeZone, Self.pickerZone)
                 .datePickerStyle(.field).controlSize(.small)
             HStack(spacing: 5) {
                 ForEach(1...7, id: \.self) { day in
