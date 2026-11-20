@@ -87,7 +87,8 @@ struct Dashboard: View {
     }
     private func binding(for block: Block) -> Binding<Block> {
         Binding(get: { store.blocks.first { $0.id == block.id } ?? block }, set: { updated in
-            guard let index = store.blocks.firstIndex(where: { $0.id == block.id }) else { return }
+            guard let index = store.blocks.firstIndex(where: { $0.id == block.id }),
+                  store.blocks[index] != updated else { return }
             store.blocks[index] = updated
         })
     }
