@@ -20,6 +20,7 @@ struct BlockEditor: View {
         (symbol: "fork.knife", label: "Meal"),
     ]
     @State private var draftTitle: String?
+    @State private var originalTitle: String?
     @FocusState private var editingTitle: Bool
     @State private var confirmingDeletion = false
 
@@ -33,17 +34,24 @@ struct BlockEditor: View {
         })
     }
 
+    private func finishTitleEdit() {
+        draftTitle = nil
+        originalTitle = nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             TextField("Activity name", text: Binding(get: { draftTitle ?? block.displayTitle }, set: { value in
+                if originalTitle == nil { originalTitle = block.title }
                 draftTitle = value
-                block.acceptTitle(value)
+                block.title = Block.usableTitle(value) ?? originalTitle ?? block.title
             }))
                 .focused($editingTitle)
                 .onChange(of: editingTitle) { _, focused in
-                    if !focused { draftTitle = nil }
+                    if !focused { finishTitleEdit() }
                 }
-                .onSubmit { draftTitle = nil }.textFieldStyle(.plain).font(.system(size: 15, weight: .medium))
+                .onSubmit { finishTitleEdit() }
+                .textFieldStyle(.plain).font(.system(size: 15, weight: .medium))
             DatePicker("Time", selection: pickerTime, displayedComponents: .hourAndMinute)
                 .environment(\.timeZone, Self.pickerZone)
                 .datePickerStyle(.field).controlSize(.small)

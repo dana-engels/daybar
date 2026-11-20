@@ -68,13 +68,27 @@ final class ScheduleTests: XCTestCase {
         }
     }
 
+    func testHalfHourSpringGapMovesActivitiesToFirstValidMinute() {
+        var local = calendar
+        local.timeZone = TimeZone(identifier: "Australia/Lord_Howe")!
+        let jump = ISO8601DateFormatter().date(from: "2026-10-03T15:30:00Z")!
+        let before = jump.addingTimeInterval(-60)
+        let activities = [120, 135, 150].map { Block(title: "Routine", minute: $0, symbol: "book") }
+        for group in [Array(activities.prefix(2)), activities] {
+            XCTAssertEqual(Schedule.timeline(group, at: before, calendar: local).next, group.last)
+            XCTAssertEqual(Schedule.current(group, at: jump, calendar: local), group.last)
+            XCTAssertEqual(Schedule.transition(group, after: before, through: jump, calendar: local), group.last)
+        }
+    }
+
     func testBlankEditsPreserveLastUsableTitleAndLegacyBlanksHaveFallback() {
-        var block = Block(title: "  ", minute: 120, symbol: "book")
+        let block = Block(title: "  ", minute: 120, symbol: "book")
         XCTAssertEqual(block.displayTitle, "Untitled activity")
-        block.acceptTitle("Read")
-        block.acceptTitle("")
-        block.acceptTitle("  ")
-        XCTAssertEqual(block.title, "Read")
+        let original = "Read"
+        for draft in ["Rea", "Re", "R", "", "  "] {
+            let saved = Block.usableTitle(draft) ?? original
+            XCTAssertEqual(saved, draft.trimmingCharacters(in: .whitespaces).isEmpty ? original : draft)
+        }
     }
 
     func testFallBackDoesNotMakeCurrentActivityMoveBackwards() {

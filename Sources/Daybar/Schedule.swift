@@ -29,13 +29,11 @@ struct Block: Identifiable, Codable, Equatable {
     }
 
     var displayTitle: String {
-        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled activity" : title
+        Self.usableTitle(title) ?? "Untitled activity"
     }
 
-    mutating func acceptTitle(_ draft: String) {
-        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            title = draft
-        }
+    static func usableTitle(_ text: String) -> String? {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
     }
 
     static let defaults: [Block] = [
@@ -78,14 +76,29 @@ enum Schedule {
         var events: [Occurrence] = []
         for block in today(blocks, at: date, calendar: calendar) {
             guard (0..<1440).contains(block.minute),
-                  let due = calendar.date(bySettingHour: block.minute / 60, minute: block.minute % 60, second: 0,
-                                          of: calendar.startOfDay(for: date), matchingPolicy: .nextTime, repeatedTimePolicy: .first),
-                  calendar.isDate(due, inSameDayAs: date) else { continue }
+                  let due = dueDate(minute: block.minute, on: date, calendar: calendar) else { continue }
             // Ordered by scheduled minute, then ID. The last activity at an instant wins.
             if events.last?.date == due { events.removeLast() }
             events.append(Occurrence(block: block, date: due))
         }
         return events
+    }
+
+    private static func dueDate(minute: Int, on day: Date, calendar: Calendar) -> Date? {
+        let start = calendar.startOfDay(for: day)
+        if let due = calendar.date(bySettingHour: minute / 60, minute: minute % 60, second: 0,
+                                   of: start, matchingPolicy: .nextTime, repeatedTimePolicy: .first),
+           calendar.isDate(due, inSameDayAs: day) {
+            return due
+        }
+        // Foundation can advance to tomorrow for a gap shorter than one hour.
+        // The transition instant itself is the first valid time after the gap.
+        guard let jump = calendar.timeZone.nextDaylightSavingTimeTransition(after: start.addingTimeInterval(-1)),
+              calendar.isDate(jump, inSameDayAs: day) else { return nil }
+        let zone = calendar.timeZone
+        let gap = zone.secondsFromGMT(for: jump) - zone.secondsFromGMT(for: jump.addingTimeInterval(-1))
+        let end = calendar.component(.hour, from: jump) * 3600 + calendar.component(.minute, from: jump) * 60
+        return gap > 0 && minute * 60 >= end - gap && minute * 60 < end ? jump : nil
     }
 
     static func timeline(_ blocks: [Block], at date: Date, calendar: Calendar = .current) -> Timeline {
